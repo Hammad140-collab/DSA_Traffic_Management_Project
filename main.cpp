@@ -2,7 +2,9 @@
 #include<fstream>
 #include<sstream>
 #include<cmath>
+#include<chrono>
 #include<SFML/Graphics.hpp>
+#define INF INT_MAX
 using namespace std;
 
 //Constant Macros And Global Variables
@@ -12,6 +14,7 @@ constexpr float ATTRACTION_FORCE = 0.01f;
 const string fontPath = R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\Arial.ttf)";
 int number_of_intersections = 0;
 int number_of_roads = 0;
+int Adj_Matrix[26][26];
 
 //Road Network and Graph
 class RoadNetwork {
@@ -79,9 +82,6 @@ class RoadNetwork {
         void print()const {
             cout << "from: " << from << " to: " << to << " weight: " << weight << endl;
         }
-        unsigned char getfrom()const {
-            return static_cast<unsigned char>(from+65);
-        }
 
     }*roads;
     void loadRoadData() {
@@ -97,7 +97,7 @@ class RoadNetwork {
         number_of_roads--;
         roads = new Edge[number_of_roads];
         file.close();
-        file.open(R"(C:\Users\Hammad\Desktop\Sem3\DSA_Project\road_network.csv)",ios::in);
+        file.open(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\road_network.csv)",ios::in);
         if(!file.is_open()) {
             cout<<"File could not be opened"<<endl;
             return;
@@ -119,6 +119,7 @@ class RoadNetwork {
             roads[i].from = atr[0][0] - 65;
             roads[i].to = atr[1][0] - 65;
             roads[i].weight = stoi(atr[2]);
+            cout<<atr[0][0]<<' '<<atr[1][0]<<' '<<atr[2]<<endl;
             i++;
         }
         file.close();
@@ -172,7 +173,8 @@ class RoadNetwork {
                 }
             }
             if (!fromExists) {
-                uniqueNodes[uniqueCount++] = fromNode;
+                uniqueNodes[roads[i].from] = fromNode;
+                uniqueCount++;
             }
 
             // Check if 'toNode' is already in uniqueNodes
@@ -184,7 +186,8 @@ class RoadNetwork {
                 }
             }
             if (!toExists) {
-                uniqueNodes[uniqueCount++] = toNode;
+                uniqueNodes[roads[i].to] = toNode;
+                uniqueCount++;
             }
         }
 
@@ -195,7 +198,10 @@ class RoadNetwork {
         intersections = new Node[number_of_intersections];
 
         // Initialize each intersection with a random position
-        for (int i = 0; i < number_of_intersections; ++i) {
+        for (int i = 0; i < 26; ++i) {
+            if(uniqueNodes[i] == '#') {
+                continue;;
+            }
             float x = static_cast<float>(rand() % 600 + 150);
             float y = static_cast<float>(rand() % 600 + 150);
             intersections[i] = Node(x, y, uniqueNodes[i], font);
@@ -230,6 +236,7 @@ class RoadNetwork {
         delete[] roads;
     }
 };
+
 
 //Vehicle
 class Vehicle {};
@@ -305,14 +312,16 @@ void displayGraph(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
             string w = to_string(static_cast<int>(Road.roads[i].weight));
             weight.setString(w);
             weight.setPosition(text_x,text_y);
+
+            //if(Road.roads[i].from == Road.roads[index - 65].from && Road.roads[i].to == Road.roads[index - 65].to)
             window.draw(line, 2, sf::Lines);
             window.draw(weight);
         }
 
         // Draw nodes
         for (int i = 0; i < number_of_intersections; ++i) {
-            //window.draw(intersections[i].shape);
-            window.draw(Road.intersections[i].text);
+            //window.draw(Road.intersections[i].shape);
+                window.draw(Road.intersections[i].text);
         }
 }
 void displayBlocked(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
@@ -358,13 +367,85 @@ void addButtons(Button buttons[],int size,sf::Font& font) {
     }
 }
 
+//Util Function
+void makeAdjMat(const RoadNetwork& Road) {
+    for(auto & i : Adj_Matrix) {
+        for(int & j : i) {
+            j = INF;
+        }
+    }
+    for(int i = 0; i < number_of_roads; ++i) {
+        Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = static_cast<int>(Road.roads[i].weight);
+        Adj_Matrix[i][i] = 0;
+        if(Road.roads[i].isBlocked) {
+            Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
+        }
+    }
+}
 
+
+//Dijkstra's Algo
+int minDistance(const int dist[],const bool visited[],const int number_of_intersections) {
+    int min = INF, minIndex = -1;
+    for (int v = 0; v < number_of_intersections; v++) {
+        if (!visited[v] && dist[v] <= min) {
+            min = dist[v];
+            minIndex = v;
+        }
+    }
+
+    return minIndex;
+}
+string dijkstra(const char source, const char destination) {
+    int dist[number_of_intersections] = {INF};
+    bool visited[number_of_intersections] = {false};
+    int parent[number_of_intersections] = {-1};
+
+    for(int i = 0; i < number_of_intersections; ++i) {
+        parent[i] = -1;
+        visited[i] = false;
+        dist[i] = INF;
+    }
+
+    const int src = source - 'A';                // Convert source to index
+    const int dest = destination - 'A';          // Convert destination to index
+    dist[src] = 0;                         // Distance from source to itself is 0
+
+    for (int count = 0; count < number_of_intersections - 1; count++) {
+        int u = minDistance(dist, visited, number_of_intersections); // Pick the minimum distance vertex
+        if (u == -1) break; // All remaining number_of_intersections are unreachable
+        visited[u] = true;
+
+        // Update distances for neighbors of the picked vertex
+        for (int v = 0; v < number_of_intersections; v++) {
+            if (!visited[v] && Adj_Matrix[u][v] != INF && dist[u] + Adj_Matrix[u][v] < dist[v]) {
+                dist[v] = dist[u] + Adj_Matrix[u][v];
+                parent[v] = u; // Update parent for path reconstruction
+            }
+        }
+    }
+
+    // Reconstruct the shortest path
+    string path = "";
+    int current = dest;
+    while (current != -1) {
+        path = char(current + 'A') + path;
+        current = parent[current];
+    }
+
+    // If the first character in the path isn't the source, there's no path
+    if (path[0] != source) return "No path found";
+
+    return path;
+}
 int main() {
-    int choice = -1;
+    int choice = -1;int index = 65;
+    bool isSecondWindow = false;
     RoadNetwork Road;
     sf::Font font;
     Button buttons[8];
     sf::RenderWindow window(sf::VideoMode(1600, 900), "Dynamic Graph Layout");
+    sf::RenderWindow* mini_window = nullptr;
 
     Road.loadRoadData();
     Road.makeIntersections(font);
@@ -372,6 +453,9 @@ int main() {
     window.setFramerateLimit(60);
     font.loadFromFile(fontPath);
     addButtons(buttons,8,font);
+
+    makeAdjMat(Road);
+    cout<<dijkstra('A','F')<<endl;
 
     while (window.isOpen()) {
         sf::Event event;
@@ -397,22 +481,46 @@ int main() {
                     }
                 }
             }
+            if(event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::V) {
+                index++;
+            }
+
         }
-        window.clear(sf::Color(179,200,207));
-        switch (choice) {
-            case 0:
-                displayGraph(window,Road,font);
+
+        if (window.isOpen()) {
+            displayMenu(window,buttons,8);
+            window.display();
+            window.clear(sf::Color(179,200,207));
+            switch (choice) {
+                case 0:
+                    displayGraph(window,Road,font);
                 break;
 
-            case 3:
-                displayBlocked(window,Road,font);
+                case 3:
+                    displayBlocked(window,Road,font);
                 break;
-            default:
-                break;
+
+                case 5:
+                    for(int i = 0 ; i < 26; i++) {
+                        for(int j = 0; j < 26; j++) {
+                            if(Adj_Matrix[i][j] == INF) {
+                                cout<<"I ";
+                            }
+                            else {
+                                cout<<Adj_Matrix[i][j]<<' ';
+                            }
+                        }
+                        cout<<endl;
+                    }
+                    choice = -1;
+                    break;
+
+                default:
+                    break;
+            }
         }
-        displayMenu(window,buttons,8);
-        window.display();
     }
 
+    delete mini_window;
     return 0;
 }
