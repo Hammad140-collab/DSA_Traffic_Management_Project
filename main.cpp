@@ -6,13 +6,12 @@
 using namespace std;
 
 //Constant Macros And Global Variables
-constexpr float REPULSION_FORCE = 10000.0f;
+constexpr float REPULSION_FORCE = 5000.0f;
 constexpr float DAMPING = 0.85f;
-constexpr float ATTRACTION_FORCE = 0.05f;
+constexpr float ATTRACTION_FORCE = 0.01f;
 const string fontPath = R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\Arial.ttf)";
 int number_of_intersections = 0;
 int number_of_roads = 0;
-
 
 //Road Network and Graph
 class RoadNetwork {
@@ -42,7 +41,7 @@ class RoadNetwork {
             text.setFont(font);
             text.setString(symbol);
             text.setCharacterSize(24);
-            text.setFillColor(sf::Color(20,20,20));
+            text.setFillColor(sf::Color::Black);
 
             // Center the text inside the circle
             sf::FloatRect textBounds = text.getLocalBounds();
@@ -57,19 +56,22 @@ class RoadNetwork {
             shape.setPosition(position);
             text.setPosition(position);
             velocity *= DAMPING; // Apply damping to slow down movement
+
         }
     }*intersections;
     struct Edge {
         int from;
         int to;
-        int weight;
+        float weight;
+        string status = " ";
+        bool isBlocked = false;
 
         Edge() {
             from = 0;
             to = 0;
             weight = 0;
         }
-        Edge(const unsigned char from, const unsigned char to, const int weight) {
+        Edge(const unsigned char from, const unsigned char to, const float weight) {
             this->from = from - 65;
             this->to = to - 65;
             this->weight = weight;
@@ -120,6 +122,33 @@ class RoadNetwork {
             i++;
         }
         file.close();
+
+        file.open(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\road_closures.csv)",ios::in);
+
+        if(!file.is_open()) {
+            cout<<"File could not be opened"<<endl;
+            return;
+        }
+        getline(file,line);
+        while(getline(file,line)) {
+            stringstream ss(line);
+            string word;
+            getline(ss, word, ',');
+            atr[0] = word;
+            getline(ss, word, ',');
+            atr[1] = word;
+            getline(ss, word, ',');
+            atr[2] = word;
+
+            for(int i = 0; i < number_of_roads; i++) {
+                if(atr[0][0]-65 == roads[i].from && atr[1][0]-65 == roads[i].to) {
+                    if(atr[2] == "Blocked")
+                        roads[i].isBlocked = true;
+
+                    roads[i].status = atr[2];
+                }
+            }
+        }
     }
     void makeIntersections(const sf::Font& font) {
 
@@ -167,8 +196,8 @@ class RoadNetwork {
 
         // Initialize each intersection with a random position
         for (int i = 0; i < number_of_intersections; ++i) {
-            float x = static_cast<float>(rand() % 800 + 150);
-            float y = static_cast<float>(rand() % 800 + 150);
+            float x = static_cast<float>(rand() % 600 + 150);
+            float y = static_cast<float>(rand() % 600 + 150);
             intersections[i] = Node(x, y, uniqueNodes[i], font);
         }
     }
@@ -202,8 +231,11 @@ class RoadNetwork {
     }
 };
 
+//Vehicle
+class Vehicle {};
 
-//SFML UI
+
+//SFML UI AND DISPLAYS
 class Button {
 private:
     sf::RectangleShape shape;
@@ -248,22 +280,33 @@ public:
         shape.setFillColor(sf::Color(229,225,218));
     }
 };
-void displayGraph(sf::RenderWindow& window,RoadNetwork& Road) {
+void displayGraph(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
         Road.applyForces();
         for(int i = 0; i < number_of_roads; ++i) {
-            if(Road.intersections[i].symbol == 'A' || Road.intersections[i].symbol == 'Z' || Road.intersections[i].symbol == 'R') {
-                continue;
+            sf::Vector2f tempPos = Road.intersections[i].position;
+            tempPos += Road.intersections[i].velocity;
+            if(tempPos.x > 60 && tempPos.x <= 900 && tempPos.y > 60 && tempPos.y <= 840) {
+                Road.intersections[i].update();
             }
-            Road.intersections[i].update();
         }
 
         // Draw edges
         for (int i = 0; i < number_of_roads; ++i) {
+            sf::Text weight;
+            weight.setCharacterSize(10);
+            weight.setFont(font);
+            weight.setFillColor(sf::Color::Black);
             sf::Vertex line[] = {
                 sf::Vertex(Road.intersections[Road.roads[i].from].position, sf::Color::White),
                 sf::Vertex(Road.intersections[Road.roads[i].to].position, sf::Color::White)
             };
+            float text_x = (line[0].position.x + line[1].position.x)/2;
+            float text_y = (line[0].position.y + line[1].position.y)/2;
+            string w = to_string(static_cast<int>(Road.roads[i].weight));
+            weight.setString(w);
+            weight.setPosition(text_x,text_y);
             window.draw(line, 2, sf::Lines);
+            window.draw(weight);
         }
 
         // Draw nodes
@@ -271,6 +314,32 @@ void displayGraph(sf::RenderWindow& window,RoadNetwork& Road) {
             //window.draw(intersections[i].shape);
             window.draw(Road.intersections[i].text);
         }
+}
+void displayBlocked(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
+    // Draw edges
+    for (int i = 0; i < number_of_roads; ++i) {
+        sf::Text weight;
+        weight.setCharacterSize(10);
+        weight.setFont(font);
+        weight.setFillColor(sf::Color::Black);
+        sf::Vertex line[] = {
+            sf::Vertex(Road.intersections[Road.roads[i].from].position, Road.roads[i].isBlocked? sf::Color::Red:sf::Color::White),
+            sf::Vertex(Road.intersections[Road.roads[i].to].position, Road.roads[i].isBlocked? sf::Color::Red:sf::Color::White)
+        };
+        float text_x = (line[0].position.x + line[1].position.x)/2;
+        float text_y = (line[0].position.y + line[1].position.y)/2;
+        string w = (Road.roads[i].status);
+        weight.setString(w);
+        weight.setPosition(text_x,text_y);
+        window.draw(line, 2, sf::Lines);
+        window.draw(weight);
+    }
+
+    // Draw nodes
+    for (int i = 0; i < number_of_intersections; ++i) {
+        //window.draw(intersections[i].shape);
+        window.draw(Road.intersections[i].text);
+    }
 }
 void displayMenu(sf::RenderWindow& window,Button buttons[],int size) {
     sf::RectangleShape side_panel;
@@ -288,6 +357,7 @@ void addButtons(Button buttons[],int size,sf::Font& font) {
         buttons[i] = Button(1164 + 140, 200 + i * 70,170,60,options[i],sf::Color(229,225,218),font);
     }
 }
+
 
 int main() {
     int choice = -1;
@@ -331,7 +401,11 @@ int main() {
         window.clear(sf::Color(179,200,207));
         switch (choice) {
             case 0:
-                displayGraph(window,Road);
+                displayGraph(window,Road,font);
+                break;
+
+            case 3:
+                displayBlocked(window,Road,font);
                 break;
             default:
                 break;
