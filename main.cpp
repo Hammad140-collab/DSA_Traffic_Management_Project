@@ -6,9 +6,9 @@
 using namespace std;
 
 //Constant Macros And Global Variables
-const float REPULSION_FORCE = 10000.0f;
-const float DAMPING = 0.85f;
-const float ATTRACTION_FORCE = 0.05f;
+constexpr float REPULSION_FORCE = 10000.0f;
+constexpr float DAMPING = 0.85f;
+constexpr float ATTRACTION_FORCE = 0.05f;
 const string fontPath = R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\Arial.ttf)";
 int number_of_intersections = 0;
 int number_of_roads = 0;
@@ -42,7 +42,7 @@ class RoadNetwork {
             text.setFont(font);
             text.setString(symbol);
             text.setCharacterSize(24);
-            text.setFillColor(sf::Color::White);
+            text.setFillColor(sf::Color(20,20,20));
 
             // Center the text inside the circle
             sf::FloatRect textBounds = text.getLocalBounds();
@@ -210,6 +210,7 @@ private:
     sf::Text text;
 
 public:
+    bool buttonClicked = false;
     Button(){}
     Button(float x, float y, float width, float height, const std::string& label, const sf::Color& color,const sf::Font& font) {
         // Set the button shape
@@ -242,7 +243,35 @@ public:
     void setFillColor(const sf::Color& color) {
         shape.setFillColor(color);
     }
+
+    void resetFillColor() {
+        shape.setFillColor(sf::Color(229,225,218));
+    }
 };
+void displayGraph(sf::RenderWindow& window,RoadNetwork& Road) {
+        Road.applyForces();
+        for(int i = 0; i < number_of_roads; ++i) {
+            if(Road.intersections[i].symbol == 'A' || Road.intersections[i].symbol == 'Z' || Road.intersections[i].symbol == 'R') {
+                continue;
+            }
+            Road.intersections[i].update();
+        }
+
+        // Draw edges
+        for (int i = 0; i < number_of_roads; ++i) {
+            sf::Vertex line[] = {
+                sf::Vertex(Road.intersections[Road.roads[i].from].position, sf::Color::White),
+                sf::Vertex(Road.intersections[Road.roads[i].to].position, sf::Color::White)
+            };
+            window.draw(line, 2, sf::Lines);
+        }
+
+        // Draw nodes
+        for (int i = 0; i < number_of_intersections; ++i) {
+            //window.draw(intersections[i].shape);
+            window.draw(Road.intersections[i].text);
+        }
+}
 void displayMenu(sf::RenderWindow& window,Button buttons[],int size) {
     sf::RectangleShape side_panel;
     side_panel.setFillColor(sf::Color(137,168,178));
@@ -261,9 +290,14 @@ void addButtons(Button buttons[],int size,sf::Font& font) {
 }
 
 int main() {
+    int choice = -1;
+    RoadNetwork Road;
     sf::Font font;
     Button buttons[8];
     sf::RenderWindow window(sf::VideoMode(1600, 900), "Dynamic Graph Layout");
+
+    Road.loadRoadData();
+    Road.makeIntersections(font);
 
     window.setFramerateLimit(60);
     font.loadFromFile(fontPath);
@@ -275,8 +309,33 @@ int main() {
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
+            if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+                sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+                for(int i = 0; i < 8; i++) {
+                    if(buttons[i].isClicked(mousePos)) {
+                        buttons[i].setFillColor(sf::Color(229-30,225-30,218-30));
+                        buttons[i].buttonClicked = true;
+                        choice = i;
+                    }
+                }
+            }
+            if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
+                for(int i = 0; i < 8; i++) {
+                    if(buttons[i].buttonClicked) {
+                        buttons[i].resetFillColor();
+                        buttons[i].buttonClicked = false;
+                    }
+                }
+            }
         }
         window.clear(sf::Color(179,200,207));
+        switch (choice) {
+            case 0:
+                displayGraph(window,Road);
+                break;
+            default:
+                break;
+        }
         displayMenu(window,buttons,8);
         window.display();
     }
