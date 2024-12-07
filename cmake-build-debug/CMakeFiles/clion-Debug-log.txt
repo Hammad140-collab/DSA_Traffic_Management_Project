@@ -1,0 +1,5 @@
+"C:\Program Files\JetBrains\CLion 2024.2.1\bin\cmake\win\x64\bin\cmake.exe" -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_MAKE_PROGRAM=C:/Program Files/JetBrains/CLion 2024.2.1/bin/ninja/win/x64/ninja.exe" -G Ninja -S C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project -B C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\cmake-build-debug
+-- Found SFML 2.6.2 in C:/SFML/lib/cmake/SFML
+-- Configuring done (0.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/Hammad/Desktop/DSA_Traffic_Management_Project/cmake-build-debug
