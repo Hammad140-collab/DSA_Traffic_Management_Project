@@ -168,7 +168,7 @@ class RoadNetwork {
             for(int i = 0; i < number_of_roads; i++) {
                 if(atr[0][0]-65 == roads[i].from && atr[1][0]-65 == roads[i].to) {
                     if(atr[2] == "Blocked")
-                        roads[i].isBlocked = true;
+                        roads[i].isBlocked = false;
 
                     roads[i].status = atr[2];
                 }
@@ -190,20 +190,16 @@ class RoadNetwork {
         place_sprites();
     }
     void makeIntersections(const sf::Font& font) {
-
         char uniqueNodes[26];
         int uniqueCount = 0;
 
         for(char & uniqueNode : uniqueNodes) {
             uniqueNode = '#';
         }
-        // Collect unique nodes
         if(roads != nullptr) {
             for(int i = 0; i < number_of_roads; ++i) {
                 char fromNode = static_cast<char>(roads[i].from + 'A');
                 char toNode = static_cast<char>(roads[i].to + 'A');
-
-                // Check if 'fromNode' is already in uniqueNodes
                 bool fromExists = false;
                 for (int j = 0; j < uniqueCount; ++j) {
                     if (uniqueNodes[j] == fromNode) {
@@ -215,8 +211,6 @@ class RoadNetwork {
                     uniqueNodes[roads[i].from] = fromNode;
                     uniqueCount++;
                 }
-
-                // Check if 'toNode' is already in uniqueNodes
                 bool toExists = false;
                 for (int j = 0; j < uniqueCount; ++j) {
                     if (uniqueNodes[j] == toNode) {
@@ -230,8 +224,6 @@ class RoadNetwork {
                 }
             }
         }
-
-        // Now uniqueNodes contains all unique nodes, and uniqueCount has the total count
         number_of_intersections = uniqueCount;
 
         // Allocate memory for intersections
@@ -254,7 +246,6 @@ class RoadNetwork {
                 sf::Vector2f delta = intersections[i].position - intersections[j].position;
                 const float distance = std::max(std::sqrt(delta.x * delta.x + delta.y * delta.y), 8.0f);
                 const sf::Vector2f repulsion = (REPULSION_FORCE / (distance * distance)) * (delta / distance);
-
                 intersections[i].velocity += repulsion;
                 intersections[j].velocity -= repulsion;
             }
@@ -266,7 +257,6 @@ class RoadNetwork {
                 sf::Vector2f delta = intersections[roads[i].from].position - intersections[roads[i].to].position;
                 const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
                 const sf::Vector2f attraction = ATTRACTION_FORCE * distance * (delta / distance);
-
                 intersections[roads[i].from].velocity -= attraction;
                 intersections[roads[i].to].velocity += attraction;
             }
@@ -336,6 +326,11 @@ public:
                 vehicles[i].path = dijkstra(vehicles[i].source,vehicles[i].destination);
                 i++;
             }
+        }
+    }
+    void print() {
+        for(int i = 0; i < vehicleCount; i++) {
+            cout << vehicles[i].source <<' '<< vehicles[i].destination << endl;
         }
     }
 
@@ -435,13 +430,13 @@ void displayBlocked(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
         weight.setFont(font);
         weight.setFillColor(sf::Color::Black);
         sf::Vertex line[] = {
-            sf::Vertex(Road.intersections[Road.roads[i].from].position, Road.roads[i].isBlocked? sf::Color::Red:sf::Color::White),
-            sf::Vertex(Road.intersections[Road.roads[i].to].position, Road.roads[i].isBlocked? sf::Color::Red:sf::Color::White)
+            sf::Vertex(Road.intersections[Road.roads[i].from].position, (Road.roads[i].isBlocked || Adj_Matrix[Road.roads[i].from][Road.roads[i].to] == INF) ? sf::Color::Red:sf::Color::White),
+            sf::Vertex(Road.intersections[Road.roads[i].to].position, (Road.roads[i].isBlocked || Adj_Matrix[Road.roads[i].from][Road.roads[i].to] == INF) ? sf::Color::Red:sf::Color::White)
         };
         float text_x = (line[0].position.x + line[1].position.x)/2;
         float text_y = (line[0].position.y + line[1].position.y)/2;
         string w = (Road.roads[i].status);
-        weight.setString(w);
+        weight.setString(Adj_Matrix[Road.roads[i].from][Road.roads[i].to] == INF?"Blocked":w);
         weight.setPosition(text_x,text_y);
         window.draw(line, 2, sf::Lines);
         window.draw(weight);
@@ -540,45 +535,55 @@ void makeAdjMat(const RoadNetwork& Road) {
         for(int i = 0; i < number_of_roads; ++i) {
             Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = static_cast<int>(Road.roads[i].weight);
             Adj_Matrix[i][i] = 0;
-            if(Road.roads[i].isBlocked) {
-                Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
-            }
+            // if(Road.roads[i].isBlocked) {
+            //     Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
+            // }
         }
     }
 }
 void makeConMat(const RoadNetwork& Road,const Vehicles& vehicles) {
     for(int i = 0; i < vehicles.vehicleCount; i++) {
         string path = vehicles.vehicles[i].path;
+        cout<<path<<endl;
         if(path != "No path found") {
             congestion_matrix[path[0] - 65][path[1] - 65]++;
         }
     }
 }
-void updateConMat(const RoadNetwork& Road,const Vehicles& vehicles) {
-    for(int i = 0 ; i < vehicles.vehicleCount; i++) {
-        if(vehicles.vehicles[i].reached) {
+void updateConMat(const RoadNetwork& Road, const Vehicles& vehicles) {
+    for (int i = 0; i < vehicles.vehicleCount; i++){
+        if (vehicles.vehicles[i].reached) {
             continue;
         }
         int& step = vehicles.vehicles[i].steps;
         int& current_time = vehicles.vehicles[i].current_time_on_path;
-        string path = vehicles.vehicles[i].path;   //ABDF
+        std::string path = vehicles.vehicles[i].path;
+        if (path == "No path found" || step >= path.size() - 1) {
+            vehicles.vehicles[i].reached = true;
+            continue;
+        }
         char source = path[step];
         char destination = path[step + 1];
-        if(path != "No path found") {
-            if(destination == 0) {
+        current_time++;
+        if (current_time == Adj_Matrix[source - 'A'][destination - 'A']) {
+            current_time = 0;
+
+            congestion_matrix[source - 'A'][destination - 'A']--;
+
+            step++;
+            if (step >= path.size() - 1) {
                 vehicles.vehicles[i].reached = true;
-            }
-            current_time++;
-            if(current_time == Adj_Matrix[source - 65][destination - 65]) {
-                current_time = 0;
-                congestion_matrix[source - 65][destination - 65] = congestion_matrix[source - 65][destination - 65] - 1;
-                step++;
+                std::cout << "Reached" << std::endl;
+            } else {
                 source = path[step];
                 destination = path[step + 1];
-                congestion_matrix[source - 65][destination - 65] = congestion_matrix[source - 65][destination - 65] + 1;
+                congestion_matrix[source - 'A'][destination - 'A']++;
             }
         }
     }
+}
+void blockRoad(const RoadNetwork& Road,const char source,const char destination) {
+    Adj_Matrix[source - 65][destination - 65] = INF;
 }
 
 //Dijkstra's Algo
@@ -640,7 +645,7 @@ int main() {
     int choice = -1;
     bool simflag = false;
     bool isSecondWindow = false;
-    string routing_path,src_dest;
+    string routing_path,src_dest,blockroad;
     RoadNetwork Road;
     sf::Font font;
     Button buttons[8];
@@ -656,6 +661,7 @@ int main() {
 
     makeAdjMat(Road);
     Vehicles vehicles(Road);
+    vehicles.print();
     makeConMat(Road,vehicles);
 
     while (window.isOpen()) {
@@ -718,20 +724,52 @@ int main() {
                     displayBlocked(window,Road,font);
                     break;
 
-                case 5:
-                    for(int i = 0 ; i < 26; i++) {
-                        for(int j = 0; j < 26; j++) {
-                            if(Adj_Matrix[i][j] == INF) {
-                                cout<<"I ";
+                case 5: {
+                    sf::RenderWindow mini_window(sf::VideoMode(400, 400),"Block Road");
+                    sf::Text inputText;
+                    inputText.setFont(font);
+                    inputText.setCharacterSize(24);
+                    inputText.setFillColor(sf::Color::Black);
+                    inputText.setPosition(10.f, 10.f);
+
+                    // String to store the input
+                    string inputString;
+
+                    while (mini_window.isOpen()) {
+                        sf::Event mini_event;
+                        while (mini_window.pollEvent(mini_event)) {
+                            if (mini_event.type == sf::Event::Closed) {
+                                mini_window.close();
                             }
-                            else {
-                                cout<<Adj_Matrix[i][j]<<' ';
+
+                            if(inputString.size() ==  2) {
+                                mini_window.close();
+                                blockroad = inputString;
+                            }
+
+                            // Handle text input
+                            if (mini_event.type == sf::Event::TextEntered) {
+                                char enteredChar = static_cast<char>(mini_event.text.unicode);
+
+                                if (enteredChar == 8) {
+                                    if (!inputString.empty()) {
+                                        inputString.pop_back();
+                                    }
+                                } else if (enteredChar >= 65 && enteredChar <= 65+26) { // Handle printable characters
+                                    inputString += enteredChar;
+                                }
+
+                                inputText.setString(inputString); // Update the displayed text
                             }
                         }
-                        cout<<endl;
+
+                        mini_window.clear(sf::Color(220, 220, 220)); // Background for mini window
+                        mini_window.draw(inputText);                // Draw the text
+                        mini_window.display();
                     }
-                    choice = -1;
-                    break;
+                    blockRoad(Road,blockroad[0],blockroad[1]);
+                    choice = 3;
+                } break;
 
                 case 6: {
                     // Open the mini window
