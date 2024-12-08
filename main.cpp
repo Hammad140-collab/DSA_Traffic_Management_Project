@@ -39,7 +39,7 @@ class RoadNetwork {
         if (!texture[0].loadFromFile(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\green_light.png)")) {
             cerr << "Error: Could not load image.png" << endl;
         }
-        cout<<texture[0].getSize().x<<" "<<texture[0].getSize().y<<endl;
+        //cout<<texture[0].getSize().x<<" "<<texture[0].getSize().y<<endl;
     }
     struct Node {
         sf::Vector2f position;
@@ -277,7 +277,7 @@ class RoadNetwork {
     void showTrafficLights(sf::RenderWindow& window) const {
         for(int i = 0; i < number_of_intersections; i++) {
             window.draw(sprites[i]);
-            cout<<sprites[i].getPosition().x<<' '<<sprites[i].getPosition().y<<endl;
+            //cout<<sprites[i].getPosition().x<<' '<<sprites[i].getPosition().y<<endl;
         }
     }
     void update_sprites() {
@@ -479,6 +479,39 @@ void displayCongestion(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font
         window.draw(Road.intersections[i].text);
     }
 }
+void displaySelectedRoute(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font,const string& path) {
+
+    // Draw edges
+    for (int i = 0; i < number_of_roads; ++i) {
+        sf::Text weight;
+        weight.setCharacterSize(10);
+        weight.setFont(font);
+        weight.setFillColor(sf::Color::Black);
+        sf::Vertex line[] = {
+            sf::Vertex(Road.intersections[Road.roads[i].from].position, sf::Color::White),
+            sf::Vertex(Road.intersections[Road.roads[i].to].position, sf::Color::White)
+        };
+        float text_x = (line[0].position.x + line[1].position.x)/2;
+        float text_y = (line[0].position.y + line[1].position.y)/2;
+        string w = to_string(static_cast<int>(Road.roads[i].weight));
+        weight.setString(w);
+        weight.setPosition(text_x,text_y);
+        //window.draw(line, 2,sf::Lines);
+
+        for(int j = 0; j < path.size()-1; ++j) {
+            if(Road.roads[i].from == path[j] - 65 && Road.roads[i].to == path[j+1] - 65) {
+                window.draw(line, 2, sf::Lines);
+                window.draw(weight);
+            }
+        }
+    }
+
+    // Draw nodes
+    for (int i = 0; i < number_of_intersections; ++i) {
+        //window.draw(Road.intersections[i].shape);
+        window.draw(Road.intersections[i].text);
+    }
+}
 void displayMenu(sf::RenderWindow& window,Button buttons[],int size) {
     sf::RectangleShape side_panel;
     side_panel.setFillColor(sf::Color(137,168,178));
@@ -507,9 +540,9 @@ void makeAdjMat(const RoadNetwork& Road) {
         for(int i = 0; i < number_of_roads; ++i) {
             Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = static_cast<int>(Road.roads[i].weight);
             Adj_Matrix[i][i] = 0;
-            // if(Road.roads[i].isBlocked) {
-            //     Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
-            // }
+            if(Road.roads[i].isBlocked) {
+                Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
+            }
         }
     }
 }
@@ -604,14 +637,15 @@ string dijkstra(const char source, const char destination) {
 
 
 int main() {
-    int choice = -1;int index = 65;
+    int choice = -1;
     bool simflag = false;
     bool isSecondWindow = false;
+    string routing_path,src_dest;
     RoadNetwork Road;
     sf::Font font;
     Button buttons[8];
     sf::RenderWindow window(sf::VideoMode(1600, 900), "Dynamic Graph Layout");
-    sf::RenderWindow* mini_window = nullptr;
+    //sf::RenderWindow* mini_window = nullptr;
 
     Road.loadRoadData();
     Road.makeIntersections(font);
@@ -648,9 +682,7 @@ int main() {
                     }
                 }
             }
-            if(event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::V) {
-                index++;
-            }
+
 
         }
         Road.update_sprites();
@@ -680,12 +712,11 @@ int main() {
                 case 2:
                     displayCongestion(window,Road,font);
                     simflag = true;
-
-                break;
+                    break;
 
                 case 3:
                     displayBlocked(window,Road,font);
-                break;
+                    break;
 
                 case 5:
                     for(int i = 0 ; i < 26; i++) {
@@ -702,12 +733,69 @@ int main() {
                     choice = -1;
                     break;
 
+                case 6: {
+                    // Open the mini window
+                    sf::RenderWindow mini_window(sf::VideoMode(400, 400), "Vehicle Routing");
+
+                    // Text object to display user input
+                    sf::Text inputText;
+                    inputText.setFont(font);
+                    inputText.setCharacterSize(24);
+                    inputText.setFillColor(sf::Color::Black);
+                    inputText.setPosition(10.f, 10.f);
+
+                    // String to store the input
+                    string inputString;
+
+                    while (mini_window.isOpen()) {
+                        sf::Event mini_event;
+                        while (mini_window.pollEvent(mini_event)) {
+                            if (mini_event.type == sf::Event::Closed) {
+                                mini_window.close();
+                            }
+
+                            if(inputString.size() ==  2) {
+                                mini_window.close();
+                                src_dest = inputString;
+                            }
+
+                            // Handle text input
+                            if (mini_event.type == sf::Event::TextEntered) {
+                                char enteredChar = static_cast<char>(mini_event.text.unicode);
+
+                                if (enteredChar == 8) {
+                                    if (!inputString.empty()) {
+                                        inputString.pop_back();
+                                    }
+                                } else if (enteredChar >= 65 && enteredChar <= 65+26) { // Handle printable characters
+                                    inputString += enteredChar;
+                                }
+
+                                inputText.setString(inputString); // Update the displayed text
+                            }
+                        }
+
+                        mini_window.clear(sf::Color(220, 220, 220)); // Background for mini window
+                        mini_window.draw(inputText);                // Draw the text
+                        mini_window.display();
+                    }
+
+                    choice = 10; // Reset choice after the mini window is closed
+                } break;
+
+                case 10:
+                    routing_path = dijkstra(src_dest[0],src_dest[1]);
+                    if(routing_path != "No path found") {
+                        displaySelectedRoute(window,Road,font,routing_path);
+                    }
+                    else
+                        choice = 0;
+                    break;
                 default:
                     break;
             }
         }
     }
 
-    delete mini_window;
     return 0;
 }
