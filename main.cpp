@@ -286,10 +286,11 @@ class RoadNetwork {
 class Vehicles {
 public:
     struct Vehicle {
-        bool isEmergency;
+        bool isEmergency = false;
         char source;
         char destination;
         string path;
+        string name;
         int steps = 0;
         int current_time_on_path = 0;
         bool reached = false;
@@ -319,6 +320,7 @@ public:
                 stringstream ss(line);
                 string word;
                 getline(ss, word, ',');
+                vehicles[i].name = word;
                 getline(ss, word, ',');
                 vehicles[i].source = word[0];
                 getline(ss, word, ',');
@@ -390,7 +392,7 @@ void displayGraph(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
         for(int i = 0; i < number_of_roads; ++i) {
             sf::Vector2f tempPos = Road.intersections[i].position;
             tempPos += Road.intersections[i].velocity;
-            if(tempPos.x > 60 && tempPos.x <= 900 && tempPos.y > 60 && tempPos.y <= 840) {
+            if(tempPos.x > 60 && tempPos.x < 900 && tempPos.y > 60 && tempPos.y < 840) {
                 Road.intersections[i].update();
             }
         }
@@ -518,7 +520,7 @@ void displayMenu(sf::RenderWindow& window,Button buttons[],int size) {
     }
 }
 void addButtons(Button buttons[],int size,sf::Font& font) {
-    string options[] = {"Display City Traffic Network","Display Traffic Signal Status","Display Congestion Status", "Display Block Roads","Handle Emergency Vehicle", "Block Road Due to Accident", "Simulate Vehicle Routing","Exit"};
+    string options[] = {"Display City Traffic Network","Display Traffic Signal Status","Display Congestion Status", "Display Block Roads","Handle Emergency Vehicle", "Block Road Due to Accident", "Simulate Vehicle Routing","Add vehicle"};
     for (int i = 0; i < size; ++i) {
         buttons[i] = Button(1164 + 140, 200 + i * 70,170,60,options[i],sf::Color(229,225,218),font);
     }
@@ -573,8 +575,9 @@ void updateConMat(const RoadNetwork& Road, const Vehicles& vehicles) {
             step++;
             if (step >= path.size() - 1) {
                 vehicles.vehicles[i].reached = true;
-                std::cout << "Reached" << std::endl;
-            } else {
+                cout <<vehicles.vehicles[i].name<<" Reached" <<endl;
+            }
+            else {
                 source = path[step];
                 destination = path[step + 1];
                 congestion_matrix[source - 'A'][destination - 'A']++;
@@ -584,6 +587,20 @@ void updateConMat(const RoadNetwork& Road, const Vehicles& vehicles) {
 }
 void blockRoad(const RoadNetwork& Road,const char source,const char destination) {
     Adj_Matrix[source - 65][destination - 65] = INF;
+}
+void addVehicle(const Vehicles& vehicles,char source,char destination) {
+    for(int i = 0; i < vehicles.vehicleCount; i++) {
+        if(vehicles.vehicles[i].reached) {
+            vehicles.vehicles[i].source = source;
+            vehicles.vehicles[i].destination = destination;
+            vehicles.vehicles[i].path = dijkstra(source,destination);
+            vehicles.vehicles[i].reached  = false;
+            vehicles.vehicles[i].current_time_on_path = 0;
+            vehicles.vehicles[i].steps = 0;
+            congestion_matrix[vehicles.vehicles[i].path[0] - 'A'][vehicles.vehicles[i].path[1] - 'A']++;
+            break;
+        }
+    }
 }
 
 //Dijkstra's Algo
@@ -767,7 +784,8 @@ int main() {
                         mini_window.draw(inputText);                // Draw the text
                         mini_window.display();
                     }
-                    blockRoad(Road,blockroad[0],blockroad[1]);
+                    if(blockroad.size() == 2)
+                        blockRoad(Road,blockroad[0],blockroad[1]);
                     choice = 3;
                 } break;
 
@@ -821,13 +839,64 @@ int main() {
                     choice = 10; // Reset choice after the mini window is closed
                 } break;
 
-                case 10:
-                    routing_path = dijkstra(src_dest[0],src_dest[1]);
-                    if(routing_path != "No path found") {
-                        displaySelectedRoute(window,Road,font,routing_path);
+                case 7:{
+                    sf::RenderWindow mini_window(sf::VideoMode(400, 400),"Block Road");
+                    sf::Text inputText;
+                    inputText.setFont(font);
+                    inputText.setCharacterSize(24);
+                    inputText.setFillColor(sf::Color::Black);
+                    inputText.setPosition(10.f, 10.f);
+
+                    // String to store the input
+                    string inputString;
+
+                    while (mini_window.isOpen()) {
+                        sf::Event mini_event;
+                        while (mini_window.pollEvent(mini_event)) {
+                            if (mini_event.type == sf::Event::Closed) {
+                                mini_window.close();
+                            }
+
+                            if(inputString.size() ==  2) {
+                                mini_window.close();
+                                routing_path = inputString;
+                            }
+
+                            // Handle text input
+                            if (mini_event.type == sf::Event::TextEntered) {
+                                char enteredChar = static_cast<char>(mini_event.text.unicode);
+
+                                if (enteredChar == 8) {
+                                    if (!inputString.empty()) {
+                                        inputString.pop_back();
+                                    }
+                                } else if (enteredChar >= 65 && enteredChar <= 65+26) { // Handle printable characters
+                                    inputString += enteredChar;
+                                }
+
+                                inputText.setString(inputString); // Update the displayed text
+                            }
+                        }
+
+                        mini_window.clear(sf::Color(220, 220, 220)); // Background for mini window
+                        mini_window.draw(inputText);                // Draw the text
+                        mini_window.display();
                     }
-                    else
-                        choice = 0;
+                    if(routing_path.size() ==  2) {
+                        addVehicle(vehicles,routing_path[0],routing_path[1]);
+                    }
+                    choice = 2;
+                } break;
+
+                case 10:
+                    if(src_dest.size() ==  2) {
+                        routing_path = dijkstra(src_dest[0],src_dest[1]);
+                        if(routing_path != "No path found") {
+                            displaySelectedRoute(window,Road,font,routing_path);
+                        }
+                        else
+                            choice = 0;
+                    }
                     break;
                 default:
                     break;
