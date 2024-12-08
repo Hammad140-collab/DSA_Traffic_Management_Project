@@ -15,13 +15,31 @@ const string fontPath = R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Projec
 int number_of_intersections = 0;
 int number_of_roads = 0;
 int Adj_Matrix[26][26];
+int congestion_matrix[26][26]{0};
+auto Clock = std::chrono::steady_clock::now();
+
+//Function Declarations
+string dijkstra(char,char);
 
 //Road Network and Graph
 class RoadNetwork {
+    void place_sprites() {
+        for(int i = 0; i < number_of_intersections; i++) {
+            sprites[i].setPosition(intersections[i].position);
+            sprites[i].setTexture(texture[0]);
+            sprites[i].setColor(sf::Color(255,255,255,255));
+        }
+    }
     public:
     RoadNetwork() {
         intersections = nullptr;
         roads = nullptr;
+        texture[0].loadFromFile(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\green_light.png)");
+        texture[1].loadFromFile(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\red_light.png)");
+        if (!texture[0].loadFromFile(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\green_light.png)")) {
+            cerr << "Error: Could not load image.png" << endl;
+        }
+        cout<<texture[0].getSize().x<<" "<<texture[0].getSize().y<<endl;
     }
     struct Node {
         sf::Vector2f position;
@@ -43,8 +61,8 @@ class RoadNetwork {
             // Initialize the text
             text.setFont(font);
             text.setString(symbol);
-            text.setCharacterSize(24);
-            text.setFillColor(sf::Color::Black);
+            text.setCharacterSize(14);
+            text.setFillColor(sf::Color::Red);
 
             // Center the text inside the circle
             sf::FloatRect textBounds = text.getLocalBounds();
@@ -65,7 +83,8 @@ class RoadNetwork {
     struct Edge {
         int from;
         int to;
-        float weight;
+        int congestion;
+        int weight;
         string status = " ";
         bool isBlocked = false;
 
@@ -73,17 +92,22 @@ class RoadNetwork {
             from = 0;
             to = 0;
             weight = 0;
+            congestion = 0;
         }
         Edge(const unsigned char from, const unsigned char to, const float weight) {
             this->from = from - 65;
             this->to = to - 65;
             this->weight = weight;
+            congestion = 0;
         }
         void print()const {
             cout << "from: " << from << " to: " << to << " weight: " << weight << endl;
         }
 
     }*roads;
+    int light_time[26];
+    sf::Sprite sprites[26];
+    sf::Texture texture[2];
     void loadRoadData() {
         fstream file(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\road_network.csv)",ios::in);
         if(!file.is_open()) {
@@ -119,7 +143,7 @@ class RoadNetwork {
             roads[i].from = atr[0][0] - 65;
             roads[i].to = atr[1][0] - 65;
             roads[i].weight = stoi(atr[2]);
-            cout<<atr[0][0]<<' '<<atr[1][0]<<' '<<atr[2]<<endl;
+            //cout<<atr[0][0]<<' '<<atr[1][0]<<' '<<atr[2]<<endl;
             i++;
         }
         file.close();
@@ -150,44 +174,60 @@ class RoadNetwork {
                 }
             }
         }
+        file.close();
+        file.open(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\traffic_signals.csv)",ios::in);
+        i = 0;
+        getline(file,line);
+        while(getline(file,line)) {
+            stringstream ss(line);
+            string word;
+            getline(ss, word, ',');
+            getline(ss, word, ',');
+            light_time[i] = stoi(word);
+            i++;
+        }
+        file.close();
+        place_sprites();
     }
     void makeIntersections(const sf::Font& font) {
 
         char uniqueNodes[26];
         int uniqueCount = 0;
 
-        for(int i = 0; i < 26; ++i) {
-            uniqueNodes[i] = '#';
+        for(char & uniqueNode : uniqueNodes) {
+            uniqueNode = '#';
         }
         // Collect unique nodes
-        for(int i = 0; i < number_of_roads; ++i) {
-            char fromNode = static_cast<char>(roads[i].from + 'A');
-            char toNode = static_cast<char>(roads[i].to + 'A');
+        if(roads != nullptr) {
+            for(int i = 0; i < number_of_roads; ++i) {
+                char fromNode = static_cast<char>(roads[i].from + 'A');
+                char toNode = static_cast<char>(roads[i].to + 'A');
 
-            // Check if 'fromNode' is already in uniqueNodes
-            bool fromExists = false;
-            for (int j = 0; j < uniqueCount; ++j) {
-                if (uniqueNodes[j] == fromNode) {
-                    fromExists = true;
-                    break;
+                // Check if 'fromNode' is already in uniqueNodes
+                bool fromExists = false;
+                for (int j = 0; j < uniqueCount; ++j) {
+                    if (uniqueNodes[j] == fromNode) {
+                        fromExists = true;
+                        break;
+                    }
                 }
-            }
-            if (!fromExists) {
-                uniqueNodes[roads[i].from] = fromNode;
-                uniqueCount++;
-            }
+                if (!fromExists) {
+                    uniqueNodes[roads[i].from] = fromNode;
+                    uniqueCount++;
+                }
 
-            // Check if 'toNode' is already in uniqueNodes
-            bool toExists = false;
-            for (int j = 0; j < uniqueCount; ++j) {
-                if (uniqueNodes[j] == toNode) {
-                    toExists = true;
-                    break;
+                // Check if 'toNode' is already in uniqueNodes
+                bool toExists = false;
+                for (int j = 0; j < uniqueCount; ++j) {
+                    if (uniqueNodes[j] == toNode) {
+                        toExists = true;
+                        break;
+                    }
                 }
-            }
-            if (!toExists) {
-                uniqueNodes[roads[i].to] = toNode;
-                uniqueCount++;
+                if (!toExists) {
+                    uniqueNodes[roads[i].to] = toNode;
+                    uniqueCount++;
+                }
             }
         }
 
@@ -202,8 +242,8 @@ class RoadNetwork {
             if(uniqueNodes[i] == '#') {
                 continue;;
             }
-            float x = static_cast<float>(rand() % 600 + 150);
-            float y = static_cast<float>(rand() % 600 + 150);
+            const auto x = static_cast<float>(rand() % 600 + 150);
+            const auto y = static_cast<float>(rand() % 600 + 150);
             intersections[i] = Node(x, y, uniqueNodes[i], font);
         }
     }
@@ -212,8 +252,8 @@ class RoadNetwork {
         for (size_t i = 0; i < number_of_intersections; ++i) {
             for (size_t j = i + 1; j < number_of_intersections; ++j) {
                 sf::Vector2f delta = intersections[i].position - intersections[j].position;
-                float distance = std::max(std::sqrt(delta.x * delta.x + delta.y * delta.y), 8.0f);
-                sf::Vector2f repulsion = (REPULSION_FORCE / (distance * distance)) * (delta / distance);
+                const float distance = std::max(std::sqrt(delta.x * delta.x + delta.y * delta.y), 8.0f);
+                const sf::Vector2f repulsion = (REPULSION_FORCE / (distance * distance)) * (delta / distance);
 
                 intersections[i].velocity += repulsion;
                 intersections[j].velocity -= repulsion;
@@ -221,13 +261,28 @@ class RoadNetwork {
         }
 
         // Attraction along edges
-        for (int i = 0; i < number_of_roads; i++) {
-            sf::Vector2f delta = intersections[roads[i].from].position - intersections[roads[i].to].position;
-            float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-            sf::Vector2f attraction = ATTRACTION_FORCE * distance * (delta / distance);
+        if(roads) {
+            for (int i = 0; i < number_of_roads; i++) {
+                sf::Vector2f delta = intersections[roads[i].from].position - intersections[roads[i].to].position;
+                const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+                const sf::Vector2f attraction = ATTRACTION_FORCE * distance * (delta / distance);
 
-            intersections[roads[i].from].velocity -= attraction;
-            intersections[roads[i].to].velocity += attraction;
+                intersections[roads[i].from].velocity -= attraction;
+                intersections[roads[i].to].velocity += attraction;
+            }
+        }
+
+        //update_sprites();
+    }
+    void showTrafficLights(sf::RenderWindow& window) const {
+        for(int i = 0; i < number_of_intersections; i++) {
+            window.draw(sprites[i]);
+            cout<<sprites[i].getPosition().x<<' '<<sprites[i].getPosition().y<<endl;
+        }
+    }
+    void update_sprites() {
+        for(int i = 0; i < number_of_intersections; i++) {
+            sprites[i].setPosition(intersections[i].position);
         }
     }
 
@@ -237,9 +292,57 @@ class RoadNetwork {
     }
 };
 
-
 //Vehicle
-class Vehicle {};
+class Vehicles {
+public:
+    struct Vehicle {
+        bool isEmergency;
+        char source;
+        char destination;
+        string path;
+        int steps = 0;
+        int current_time_on_path = 0;
+        bool reached = false;
+    };
+    Vehicle* vehicles;
+    int vehicleCount;
+
+    explicit Vehicles(const RoadNetwork& Road) {
+        vehicles = nullptr;
+        vehicleCount = 0;
+        fstream file(R"(C:\Users\Hammad\Desktop\DSA_Traffic_Management_Project\vehicles.csv)",ios::in);
+        if(!file.is_open()) {
+            cout<<"File could not be opened"<<endl;
+        }
+        else {
+            string line;
+            getline(file,line);
+            while(getline(file,line)) {
+                vehicleCount++;
+            }
+            vehicles = new Vehicle[vehicleCount];
+            file.clear();
+            file.seekg(0,ios::beg);
+            getline(file,line);
+            int i = 0;
+            while(getline(file,line)) {
+                stringstream ss(line);
+                string word;
+                getline(ss, word, ',');
+                getline(ss, word, ',');
+                vehicles[i].source = word[0];
+                getline(ss, word, ',');
+                vehicles[i].destination = word[0];
+                vehicles[i].path = dijkstra(vehicles[i].source,vehicles[i].destination);
+                i++;
+            }
+        }
+    }
+
+    ~Vehicles() {
+        delete [] vehicles;
+    }
+};
 
 
 //SFML UI AND DISPLAYS
@@ -350,6 +453,32 @@ void displayBlocked(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
         window.draw(Road.intersections[i].text);
     }
 }
+void displayCongestion(sf::RenderWindow& window,RoadNetwork& Road,sf::Font& font) {
+    for (int i = 0; i < number_of_roads; ++i) {
+        sf::Text weight;
+        sf::Color color[] = {sf::Color::White,sf::Color::Green,sf::Color::Yellow,sf::Color::Red};
+        weight.setCharacterSize(10);
+        weight.setFont(font);
+        weight.setFillColor(sf::Color::Black);
+        sf::Vertex line[] = {
+            sf::Vertex(Road.intersections[Road.roads[i].from].position,color[congestion_matrix[Road.roads[i].from][Road.roads[i].to]]),
+            sf::Vertex(Road.intersections[Road.roads[i].to].position,color[congestion_matrix[Road.roads[i].from][Road.roads[i].to]])
+        };
+        float text_x = (line[0].position.x + line[1].position.x)/2;
+        float text_y = (line[0].position.y + line[1].position.y)/2;
+        string w = to_string(congestion_matrix[Road.roads[i].from][Road.roads[i].to]);
+        weight.setString(w);
+        weight.setPosition(text_x,text_y);
+        window.draw(line, 2, sf::Lines);
+        window.draw(weight);
+    }
+
+    // Draw nodes
+    for (int i = 0; i < number_of_intersections; ++i) {
+        //window.draw(intersections[i].shape);
+        window.draw(Road.intersections[i].text);
+    }
+}
 void displayMenu(sf::RenderWindow& window,Button buttons[],int size) {
     sf::RectangleShape side_panel;
     side_panel.setFillColor(sf::Color(137,168,178));
@@ -374,15 +503,50 @@ void makeAdjMat(const RoadNetwork& Road) {
             j = INF;
         }
     }
-    for(int i = 0; i < number_of_roads; ++i) {
-        Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = static_cast<int>(Road.roads[i].weight);
-        Adj_Matrix[i][i] = 0;
-        if(Road.roads[i].isBlocked) {
-            Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
+    if(Road.roads) {
+        for(int i = 0; i < number_of_roads; ++i) {
+            Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = static_cast<int>(Road.roads[i].weight);
+            Adj_Matrix[i][i] = 0;
+            // if(Road.roads[i].isBlocked) {
+            //     Adj_Matrix[Road.roads[i].from][Road.roads[i].to] = INF;
+            // }
         }
     }
 }
-
+void makeConMat(const RoadNetwork& Road,const Vehicles& vehicles) {
+    for(int i = 0; i < vehicles.vehicleCount; i++) {
+        string path = vehicles.vehicles[i].path;
+        if(path != "No path found") {
+            congestion_matrix[path[0] - 65][path[1] - 65]++;
+        }
+    }
+}
+void updateConMat(const RoadNetwork& Road,const Vehicles& vehicles) {
+    for(int i = 0 ; i < vehicles.vehicleCount; i++) {
+        if(vehicles.vehicles[i].reached) {
+            continue;
+        }
+        int& step = vehicles.vehicles[i].steps;
+        int& current_time = vehicles.vehicles[i].current_time_on_path;
+        string path = vehicles.vehicles[i].path;   //ABDF
+        char source = path[step];
+        char destination = path[step + 1];
+        if(path != "No path found") {
+            if(destination == 0) {
+                vehicles.vehicles[i].reached = true;
+            }
+            current_time++;
+            if(current_time == Adj_Matrix[source - 65][destination - 65]) {
+                current_time = 0;
+                congestion_matrix[source - 65][destination - 65] = congestion_matrix[source - 65][destination - 65] - 1;
+                step++;
+                source = path[step];
+                destination = path[step + 1];
+                congestion_matrix[source - 65][destination - 65] = congestion_matrix[source - 65][destination - 65] + 1;
+            }
+        }
+    }
+}
 
 //Dijkstra's Algo
 int minDistance(const int dist[],const bool visited[],const int number_of_intersections) {
@@ -426,20 +590,22 @@ string dijkstra(const char source, const char destination) {
     }
 
     // Reconstruct the shortest path
-    string path = "";
-    int current = dest;
-    while (current != -1) {
-        path = char(current + 'A') + path;
-        current = parent[current];
+    if (dist[dest] == INF) {
+        return "No path found"; // Destination is unreachable
     }
 
-    // If the first character in the path isn't the source, there's no path
-    if (path[0] != source) return "No path found";
+    string path = "";
+    for (int v = dest; v != -1; v = parent[v]) {
+        path = static_cast<char>(v + 'A') + path; // Build path in reverse
+    }
 
-    return path;
+    return path; // Return the path as a string
 }
+
+
 int main() {
     int choice = -1;int index = 65;
+    bool simflag = false;
     bool isSecondWindow = false;
     RoadNetwork Road;
     sf::Font font;
@@ -455,7 +621,8 @@ int main() {
     addButtons(buttons,8,font);
 
     makeAdjMat(Road);
-    cout<<dijkstra('A','F')<<endl;
+    Vehicles vehicles(Road);
+    makeConMat(Road,vehicles);
 
     while (window.isOpen()) {
         sf::Event event;
@@ -486,6 +653,16 @@ int main() {
             }
 
         }
+        Road.update_sprites();
+
+        if(simflag) {
+            auto duration = std::chrono::seconds(1);
+            auto elapsed_time = std::chrono::steady_clock::now() - Clock;
+            if(elapsed_time >= duration) {
+                updateConMat(Road,vehicles);
+                Clock = std::chrono::steady_clock::now();
+            }
+        }
 
         if (window.isOpen()) {
             displayMenu(window,buttons,8);
@@ -493,7 +670,17 @@ int main() {
             window.clear(sf::Color(179,200,207));
             switch (choice) {
                 case 0:
-                    displayGraph(window,Road,font);
+                    if(Road.roads)displayGraph(window,Road,font);
+                break;
+
+                case 1:
+                    Road.showTrafficLights(window);
+                    break;
+
+                case 2:
+                    displayCongestion(window,Road,font);
+                    simflag = true;
+
                 break;
 
                 case 3:
